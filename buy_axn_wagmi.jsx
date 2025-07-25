@@ -8,8 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConnectModal } from '@rainbow-me/rainbowkit';
 
-const SALE_ADDRESS = '0xYourSaleContractAddress';
-const AXN_ADDRESS = '0xYourAXNTokenAddress';
+const SALE_ADDRESS = '0x88795A56E214267deEb749b5d5B129757702d1d6';
+const AXN_ADDRESS = '0x306dDE35Cf4DD52679143AeD4107B6FC0C63F5E7';
 
 const SALE_ABI = [
   {

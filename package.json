@@ -2,23 +2,23 @@
   "name": "axone-sale",
   "version": "1.0.0",
   "private": true,
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "vercel-build": "next build"
   },
-  "publishConfig": {
-  "registry": "https://registry.npmjs.org/"
-  },
   "dependencies": {
-  "next": "^14.2.3",
-  "react": "^18.2.0",
-  "react-dom": "^18.2.0",
-  "ethers": "^6.10.0",
-  "wagmi": "1.4.13",
-  "@wagmi/viem": "^1.0.1"
-  "@rainbow-me/rainbowkit": "^0.9.17"
+    "next": "^14.2.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ethers": "^6.10.0",
+    "wagmi": "1.4.13",
+    "@wagmi/viem": "^1.0.1",
+    "@rainbow-me/rainbowkit": "^0.9.17"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.17",

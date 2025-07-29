@@ -1,146 +1,103 @@
+// pages/buy.tsx
+
 'use client';
 
-import { useState } from 'react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract, useChainId } from 'wagmi';
-import { parseUnits } from 'viem';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useConnectModal } from '@rainbow-me/rainbowkit';
+import { useEffect, useState } from 'react';
+import { useAccount, useConnect, useDisconnect, useContractWrite, usePrepareContractWrite, useWaitForTransaction } from 'wagmi';
+import { InjectedConnector } from 'wagmi/connectors/injected';
+import { parseEther } from 'viem';
 
 const SALE_ADDRESS = '0x88795A56E214267deEb749b5d5B129757702d1d6';
 const AXN_ADDRESS = '0x306dDE35Cf4DD52679143AeD4107B6FC0C63F5E7';
-
-const SALE_ABI = [
+const AXN_ABI = [
   {
-    type: 'function',
-    name: 'buyWithAXN',
-    stateMutability: 'nonpayable',
-    inputs: [{ name: 'kwiAmount', type: 'uint256' }],
-    outputs: [],
+    "inputs": [
+      { "internalType": "address", "name": "spender", "type": "address" },
+      { "internalType": "uint256", "name": "amount", "type": "uint256" }
+    ],
+    "name": "approve",
+    "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ],
+    "stateMutability": "nonpayable",
+    "type": "function"
   }
 ];
 
-const AXN_ABI = [
+const SALE_ABI = [
   {
-    type: 'function',
-    name: 'approve',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'spender', type: 'address' },
-      { name: 'amount', type: 'uint256' }
-    ],
-    outputs: [{ type: 'bool' }],
-  },
-  {
-    type: 'function',
-    name: 'allowance',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'owner', type: 'address' },
-      { name: 'spender', type: 'address' }
-    ],
-    outputs: [{ type: 'uint256' }],
-  },
+    "inputs": [ { "internalType": "uint256", "name": "axnAmount", "type": "uint256" } ],
+    "name": "buyWithAXN",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
 ];
 
-export default function BuyWithWagmi() {
+export default function Buy() {
+  const { address, isConnected } = useAccount();
+  const { connect } = useConnect({ connector: new InjectedConnector() });
+  const { disconnect } = useDisconnect();
+
   const [amount, setAmount] = useState('');
-  const [status, setStatus] = useState('');
   const [step, setStep] = useState<'idle' | 'approving' | 'buying'>('idle');
 
-  const chainId = useChainId();
-  const { address, isConnected } = useAccount();
-  const { openConnectModal } = useConnectModal();
+  const axnAmount = parseEther(amount || '0');
 
-  const { data: allowance } = useReadContract({
-    abi: AXN_ABI,
+  const { config: approveConfig } = usePrepareContractWrite({
     address: AXN_ADDRESS,
-    functionName: 'allowance',
-    args: address ? [address, SALE_ADDRESS] : undefined,
-    query: { enabled: !!address },
+    abi: AXN_ABI,
+    functionName: 'approve',
+    args: [SALE_ADDRESS, axnAmount],
+    enabled: isConnected && amount !== ''
   });
 
-  const axnAmount = amount ? (BigInt(parseUnits(amount, 18)) * 10n ** 18n) / 10n ** 17n : 0n;
+  const { write: approve, data: approveTx } = useContractWrite(approveConfig);
+  const { isSuccess: isApproved } = useWaitForTransaction({ hash: approveTx?.hash });
 
-  const { writeContract: approveWrite, data: approveTx } = useWriteContract();
-  const { writeContract: buyWrite, data: buyTx } = useWriteContract();
-
-  const { isLoading: waitingApprove } = useWaitForTransactionReceipt({
-    hash: approveTx,
-    query: {
-      enabled: !!approveTx && step === 'approving',
-      onSuccess: () => {
-        setStep('buying');
-        buyWrite({
-          abi: SALE_ABI,
-          address: SALE_ADDRESS,
-          functionName: 'buyWithAXN',
-          args: [parseUnits(amount, 18)],
-        });
-      },
-    },
+  const { config: buyConfig } = usePrepareContractWrite({
+    address: SALE_ADDRESS,
+    abi: SALE_ABI,
+    functionName: 'buyWithAXN',
+    args: [axnAmount],
+    enabled: isApproved
   });
 
-  const { isLoading: waitingBuy } = useWaitForTransactionReceipt({
-    hash: buyTx,
-    query: {
-      enabled: !!buyTx && step === 'buying',
-      onSuccess: () => {
-        setStatus('✅ Achat réussi');
-        setAmount('');
-        setStep('idle');
-      },
-      onError: (err) => {
-        setStatus('❌ Erreur lors de l\'achat');
-        setStep('idle');
-      },
-    },
-  });
+  const { write: buy, data: buyTx } = useContractWrite(buyConfig);
+  const { isSuccess: isBought } = useWaitForTransaction({ hash: buyTx?.hash });
 
-  const handleBuy = async () => {
-    setStatus('');
-    if (!isConnected) return openConnectModal?.();
-    if (!amount || axnAmount === 0n) return;
-
-    if (!allowance || BigInt(allowance) < axnAmount) {
-      setStep('approving');
-      approveWrite({
-        abi: AXN_ABI,
-        address: AXN_ADDRESS,
-        functionName: 'approve',
-        args: [SALE_ADDRESS, axnAmount],
-      });
-    } else {
-      setStep('buying');
-      buyWrite({
-        abi: SALE_ABI,
-        address: SALE_ADDRESS,
-        functionName: 'buyWithAXN',
-        args: [parseUnits(amount, 18)],
-      });
-    }
-  };
+  useEffect(() => {
+    if (isApproved) setStep('buying');
+    if (isBought) setStep('idle');
+  }, [isApproved, isBought]);
 
   return (
-    <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-2xl shadow">
-      <h2 className="text-xl font-bold mb-4">Acheter des KWI avec vos AXN</h2>
-
-      <Label htmlFor="amount">Montant de KWI</Label>
-      <Input
-        id="amount"
-        placeholder="1000"
-        type="number"
-        value={amount}
-        onChange={(e) => setAmount(e.target.value)}
-        className="mb-4"
-      />
-
-      <Button onClick={handleBuy} disabled={!amount || step !== 'idle'} className="w-full">
-        {step === 'approving' ? 'Approbation...' : step === 'buying' ? 'Achat en cours...' : 'Acheter'}
-      </Button>
-
-      {status && <p className="mt-4 text-center text-sm text-muted-foreground">{status}</p>}
-    </div>
+    <main className="flex flex-col items-center justify-center min-h-screen p-4">
+      <h1 className="text-2xl font-bold mb-4">Buy KWI with AXN</h1>
+      {!isConnected ? (
+        <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={() => connect()}>Connect Wallet</button>
+      ) : (
+        <div className="flex flex-col gap-4">
+          <p>Connected: {address}</p>
+          <input
+            type="number"
+            placeholder="Amount of AXN"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            className="border px-2 py-1 rounded"
+          />
+          <button
+            className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            disabled={!approve || step !== 'idle'}
+            onClick={() => { setStep('approving'); approve?.(); }}
+          >Approve</button>
+          <button
+            className="bg-purple-600 text-white px-4 py-2 rounded disabled:opacity-50"
+            disabled={!buy || step !== 'buying'}
+            onClick={() => buy?.()}
+          >Buy</button>
+          <button className="text-red-600 underline mt-2" onClick={() => disconnect()}>Disconnect</button>
+        </div>
+      )}
+    </main>
   );
 }
+
